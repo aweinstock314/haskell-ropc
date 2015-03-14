@@ -1,5 +1,5 @@
 // gcc ./section_getter.so section_getter_client.c -o section_getter_client
-#include <stdlib.h>
+#include <stdio.h>
 
 extern char* get_section_by_name(const char* filename, const char* sectionname, size_t* out_size);
 

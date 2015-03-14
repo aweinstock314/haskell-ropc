@@ -7,6 +7,7 @@
 #include <r_list.h>
 
 #include <string.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #ifdef DEBUG
@@ -37,42 +38,35 @@ char* get_section_by_name(const char* filename, const char* sectionname, size_t*
     dbgprintf("filename: %s, sectionname: %s\n", filename, sectionname);
     char* result = NULL;
     *out_size = 0;
-    RIO* io = r_io_new(); if(io == NULL) { goto cleanup0; }
-    RBin* bin = r_bin_new(); if(bin == NULL) { goto cleanup1; }
+    int fd = open(filename, O_RDONLY); if(fd == -1) { goto cleanup0; }
+    RIO* io = r_io_new(); if(io == NULL) { goto cleanup1; }
+    RBin* bin = r_bin_new(); if(bin == NULL) { goto cleanup2; }
     r_bin_iobind(bin, io); // this has void type rather than a return code, so assume it can't fail?
-    if(r_bin_load(bin, filename, 0, 0, 0, -1, 0) == 0) { goto cleanup2; }
+    if(r_bin_load(bin, filename, 0, 0, 0, -1, 0) == 0) { goto cleanup3; }
     RList* sections = r_bin_get_sections(bin);
-    if(sections == NULL) { goto cleanup2; }
+    if(sections == NULL) { goto cleanup3; }
     RListIter* iter; RBinSection* section;
     dbgprintf("reached the loop\n");
     r_list_foreach(sections, iter, section) {
         dbgprintf("considering section %s\n", section->name);
         if(!strcmp(sectionname, section->name)) {
             result = malloc(section->size);
-            if(result == NULL) { goto cleanup2; }
+            if(result == NULL) { goto cleanup3; }
             dbgprintf("result ptr: 0x%016x\n", result);
             *out_size = section->size;
-            dbgprintf("0x%016x; 0x%016x\n", iter, section);
-            dbgprintf("%s\n", section->name);
-            dbgprintf("%x\n", section->size);
-            dbgprintf("0x%x\n", r_bin_get_offset(bin));
-            ut64 baddr = r_bin_get_baddr(bin);
-            dbgprintf("0x%x\n", baddr);
-            ut64 vaddr = r_bin_get_vaddr(bin, r_bin_get_baddr(bin), section->paddr, section->vaddr);
-            hexdump(1, (const void*)vaddr, section->size);
-            dbgprintf("\n");
-            dbgprintf("before memcpy (vaddr = %016x, size=%x)\n", vaddr, section->size);
-            memcpy(result, (const void*)vaddr, section->size);
-            dbgprintf("after memcpy\n");
-            hexdump(1, result, section->size);
-            dbgprintf("\n");
-            goto cleanup2;
+            size_t offset = section->paddr;
+            // TODO: error handling (free result if lseek or read fail)
+            lseek(fd, section->paddr, SEEK_SET);
+            read(fd, result, section->size);
+            goto cleanup3;
         }
     }
-    cleanup2:
+    cleanup3:
     r_bin_free(bin);
-    cleanup1:
+    cleanup2:
     r_io_free(io);
+    cleanup1:
+    close(fd);
     cleanup0:
     return result;
 }
