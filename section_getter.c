@@ -55,12 +55,14 @@ char* get_section_by_name(const char* filename, const char* sectionname, size_t*
             dbgprintf("result ptr: 0x%016x\n", result);
             *out_size = section->size;
             size_t offset = section->paddr;
-            // TODO: error handling (free result if lseek or read fail)
-            lseek(fd, section->paddr, SEEK_SET);
-            read(fd, result, section->size);
-            goto cleanup3;
+            if(lseek(fd, section->paddr, SEEK_SET) == -1) { goto cleanup4; }
+            if(read(fd, result, section->size) == -1) { goto cleanup4; }
+            goto cleanup3; //deliberately skip freeing the result (since successful)
         }
     }
+    cleanup4:
+    *out_size = 0;
+    free(result); result = NULL;
     cleanup3:
     r_bin_free(bin);
     cleanup2:

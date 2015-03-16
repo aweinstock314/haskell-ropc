@@ -18,16 +18,17 @@ import qualified Data.Vector as V
 foreign import ccall "get_section_by_name"
     rawGetSectionByName :: CString -> CString -> Ptr Int -> IO (Ptr Word8)
 
-getSectionByName :: String -> String -> IO (V.Vector Word8)
+getSectionByName :: String -> String -> IO (Maybe (V.Vector Word8))
 getSectionByName fname section =
     withCString fname $ \pFname ->
     withCString section $ \pSection ->
     with 0 $ \pSize -> do
         result <- rawGetSectionByName pFname pSection pSize
-        size <- peek pSize
-        vec <- V.generateM size (peekByteOff result)
-        free result
-        return vec
+        if result == nullPtr then return Nothing else do
+            size <- peek pSize
+            vec <- V.generateM size (peekByteOff result)
+            free result
+            return $ Just vec
 
 eitherToMaybe = either (const Nothing) Just
 
@@ -59,7 +60,8 @@ main = do
         [fname, backLen, section] -> main' fname backLen section
 
 main' fname numGadgets section = do
-    textSection <- getSectionByName fname section
+    textSection' <- getSectionByName fname section
+    let textSection = maybe (error $ concat ["Unable to read section ", section, " of ", fname]) id textSection'
     V.mapM_ (putStr . flip showHex "" . fromIntegral) textSection
     putStrLn ""
     let gadgets = getGadgets (read numGadgets) textSection
