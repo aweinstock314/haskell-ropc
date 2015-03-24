@@ -1,9 +1,10 @@
-{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE ForeignFunctionInterface, NoMonomorphismRestriction, TemplateHaskell #-}
 --module ROPc where
 import Control.Arrow
 import Control.Monad.Identity
-import Data.List
+import Data.Aeson
 import Data.Char
+import Data.List
 import Data.Maybe
 import Data.Word
 import Foreign.C
@@ -16,6 +17,8 @@ import System.Console.GetOpt
 import System.Environment
 import System.Exit
 import System.IO
+import qualified Data.Aeson.TH as AT
+import qualified Data.ByteString.Lazy as L
 import qualified Data.Vector as V
 
 foreign import ccall "get_section_by_name"
@@ -53,6 +56,15 @@ getGadgets backLength codeVec = nub . validate . concat $ map tryPosition retIdx
 
 
 showHexList lst = "[" ++ concat (intersperse "," (map (flip showHex "") lst)) ++ "]"
+
+toLBS = L.pack . map (fromIntegral . ord)
+fromLBS = map (chr . fromIntegral) . L.unpack
+
+showAsJSON = fromLBS . encode . toJSON
+
+fmap concat $ mapM (AT.deriveJSON AT.defaultOptions) [''InstrOperandSize, ''Operand, ''Opcode, ''Instruction]
+
+instance Show Operand where show = showAsJSON
 
 myShowInstruction (Instruction op _ args _ bytes) = show op ++ showHexList bytes
 myShowInstruction (BadInstruction a b c d) = "???" ++ show (a,b,c,d)
@@ -100,4 +112,4 @@ main_dump (Options fname section _) = do
 main_search (Options fname section maxGadgetLen) =  do
     textSection <- getSectionByName_ fname section
     let gadgets = getGadgets maxGadgetLen textSection
-    putStr . unlines $ map (show . second (map myShowInstruction)) gadgets
+    putStr . unlines $ map showAsJSON gadgets
