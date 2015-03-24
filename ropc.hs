@@ -12,7 +12,10 @@ import Foreign.Ptr
 import Foreign.Storable
 import Harpy.X86Disassembler
 import Numeric
+import System.Console.GetOpt
 import System.Environment
+import System.Exit
+import System.IO
 import qualified Data.Vector as V
 
 foreign import ccall "get_section_by_name"
@@ -29,6 +32,10 @@ getSectionByName fname section =
             vec <- V.generateM size (peekByteOff result)
             free result
             return $ Just vec
+
+getSectionByName_ fname section = fmap
+    (maybe (error $ concat ["Unable to read section \"", section, "\" of \"", fname, "\""]) id) $
+    getSectionByName fname section
 
 eitherToMaybe = either (const Nothing) Just
 
@@ -51,18 +58,46 @@ myShowInstruction (Instruction op _ args _ bytes) = show op ++ showHexList bytes
 myShowInstruction (BadInstruction a b c d) = "???" ++ show (a,b,c,d)
 myShowInstruction (PseudoInstruction a b) = "???" ++ show (a,b)
 
+data Options = Options {
+    optFilename :: String,
+    optSection :: String,
+    optGadgetLength :: Int
+    }
+
+defaultOptions = Options "a.out" ".text" 5
+
+showHelp :: IO a
+showHelp = do
+    progName <- getProgName
+    hPutStrLn stderr $ usageInfo (concat ["Usage: ", progName, " SUBCOMMAND [OPTIONS]"]) options
+    hPutStrLn stderr $ "Subcommands:\n" ++ unlines [
+        "\tdump\tDump the specified sections in the specified executable",
+        "\tsearch\tSearch for ROP gadgets in the specified executable"
+        ]
+    exitSuccess
+
+options = [
+    Option "f" ["file"] (ReqArg (\arg opt -> return opt { optFilename = arg }) "FILENAME") "Name of executable",
+    Option "s" ["section"] (ReqArg (\arg opt -> return opt { optSection = arg }) "SECTION") "Name of section",
+    Option "l" ["length"] (ReqArg (\arg opt -> return opt { optGadgetLength = read arg }) "LENGTH") "Maximum length of gadgets to search for",
+    Option "h?" ["help"] (NoArg $ \_ -> showHelp) "Show this help menu"
+    ]
+
+parse args = let (actions, _, _) = getOpt RequireOrder options args in foldl (>>=) (return defaultOptions) actions
+
 main = do
     args <- getArgs
     case args of
-        [] -> main' "./a.out" "5" ".text"
-        [fname] -> main' fname "5" ".text"
-        [fname, backLen] -> main' fname backLen ".text"
-        [fname, backLen, section] -> main' fname backLen section
+        "dump":rest -> parse rest >>= main_dump
+        "search":rest -> parse rest >>= main_search
+        _ -> showHelp
 
-main' fname numGadgets section = do
-    textSection' <- getSectionByName fname section
-    let textSection = maybe (error $ concat ["Unable to read section ", section, " of ", fname]) id textSection'
+main_dump (Options fname section _) = do
+    textSection <- getSectionByName_ fname section
     V.mapM_ (putStr . flip showHex "" . fromIntegral) textSection
     putStrLn ""
-    let gadgets = getGadgets (read numGadgets) textSection
+
+main_search (Options fname section maxGadgetLen) =  do
+    textSection <- getSectionByName_ fname section
+    let gadgets = getGadgets maxGadgetLen textSection
     putStr . unlines $ map (show . second (map myShowInstruction)) gadgets
