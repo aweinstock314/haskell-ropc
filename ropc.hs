@@ -5,6 +5,7 @@ import Control.Monad.Identity
 import Data.Aeson
 import Data.Char
 import Data.List
+import Data.Function
 import Data.Maybe
 import Data.Word
 import Foreign.C
@@ -19,6 +20,7 @@ import System.Exit
 import System.IO
 import qualified Data.Aeson.TH as AT
 import qualified Data.ByteString.Lazy as L
+import qualified Data.Map as M
 import qualified Data.Vector as V
 
 foreign import ccall "get_section_by_name"
@@ -78,31 +80,41 @@ data Options = Options {
 
 defaultOptions = Options "a.out" ".text" 5
 
-showHelp :: IO a
-showHelp = do
+showHelp :: String -> [OptDescr (Options -> IO Options)] -> IO a
+showHelp subcommand options = do
     progName <- getProgName
-    hPutStrLn stderr $ usageInfo (concat ["Usage: ", progName, " SUBCOMMAND [OPTIONS]"]) options
-    hPutStrLn stderr $ "Subcommands:\n" ++ unlines [
+    hPutStrLn stderr $ usageInfo (concat ["Usage: ", progName, " ", subcommand, " [OPTIONS]"]) options
+    exitSuccess
+
+showSubcommands :: IO a
+showSubcommands = do
+    progName <- getProgName
+    hPutStrLn stderr $ concat ["Usage: ", progName, " SUBCOMMAND [OPTIONS]"]
+    hPutStr stderr $ "Subcommands:\n" ++ unlines [
         "\tdump\tDump the specified sections in the specified executable",
         "\tsearch\tSearch for ROP gadgets in the specified executable"
         ]
     exitSuccess
 
-options = [
-    Option "f" ["file"] (ReqArg (\arg opt -> return opt { optFilename = arg }) "FILENAME") "Name of executable",
-    Option "s" ["section"] (ReqArg (\arg opt -> return opt { optSection = arg }) "SECTION") "Name of section",
-    Option "l" ["length"] (ReqArg (\arg opt -> return opt { optGadgetLength = read arg }) "LENGTH") "Maximum length of gadgets to search for",
-    Option "h?" ["help"] (NoArg $ \_ -> showHelp) "Show this help menu"
-    ]
+subprogram_options = M.fromList [
+    ("dump", (main_dump, fix $ \x -> [filename, section, help "dump" x])),
+    ("search", (main_search, fix $ \x -> [filename, section, gadgetLength, help "search" x]))
+    ] where
+    filename = Option "f" ["file"] (ReqArg (\arg opt -> return opt { optFilename = arg }) "FILENAME") "Name of executable"
+    section = Option "s" ["section"] (ReqArg (\arg opt -> return opt { optSection = arg }) "SECTION") "Name of section"
+    gadgetLength = Option "l" ["length"] (ReqArg (\arg opt -> return opt { optGadgetLength = read arg }) "LENGTH") "Maximum length of gadgets to search for"
+    help subcommand options = Option "h?" ["help"] (NoArg $ \_ -> showHelp subcommand options) "Show this help menu"
 
-parse args = let (actions, _, _) = getOpt RequireOrder options args in foldl (>>=) (return defaultOptions) actions
+parse options args = let (actions, _, _) = getOpt RequireOrder options args in foldl (>>=) (return defaultOptions) actions
 
 main = do
     args <- getArgs
     case args of
-        "dump":rest -> parse rest >>= main_dump
-        "search":rest -> parse rest >>= main_search
-        _ -> showHelp
+        subcommand:arguments -> do
+            case M.lookup subcommand subprogram_options of
+                Just (action, options) -> parse options arguments >>= action
+                Nothing -> showSubcommands
+        [] -> showSubcommands
 
 main_dump (Options fname section _) = do
     textSection <- getSectionByName_ fname section

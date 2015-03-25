@@ -20,7 +20,7 @@ executable haskell-ropc
   -- other-modules:       
   -- other-extensions:    
   -- As of 2015-03-24, harpy requires the patch from https://github.com/gentoo-haskell/gentoo-haskell/blob/master/dev-haskell/harpy/files/harpy-0.5.0.0-ghc-7.6.patch to install on debian testing
-  build-depends:       base >=4.5 && <4.7, vector, harpy, mtl, aeson, bytestring
+  build-depends:       base >=4.5 && <4.7, vector, harpy, mtl, aeson, bytestring, containers
   -- hs-source-dirs:      
   default-language:    Haskell2010
   extra-lib-dirs: bin
