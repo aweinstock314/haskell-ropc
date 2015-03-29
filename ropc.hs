@@ -4,15 +4,15 @@ import Control.Arrow
 import Control.Monad.Identity
 import Data.Aeson
 import Data.Char
-import Data.List
 import Data.Function
+import Data.List
 import Data.Maybe
 import Data.Word
 import Foreign.C
 import Foreign.Marshal
 import Foreign.Ptr
 import Foreign.Storable
-import Harpy.X86Disassembler
+import Hdis86
 import Numeric
 import System.Console.GetOpt
 import System.Environment
@@ -50,12 +50,10 @@ getGadgets backLength codeVec = nub . validate . concat $ map tryPosition retIdx
     invalidSlice i j = (i+j) > len || i < 0
     trySlice :: Int -> Int -> Maybe [Instruction]
     trySlice i j | invalidSlice i j = Nothing
-    trySlice i j = eitherToMaybe . runIdentity . disassembleList . V.toList $ V.slice i j codeVec
+    trySlice i j = Just . disassemble intel32 . L.toStrict . L.pack . V.toList $ V.slice i j codeVec
     tryPosition j = catMaybes $ map (\i -> fmap ((,)(j-i)) $ trySlice (j-i) (i+1)) [0..backLength]
-    isValid (Instruction op _ _ _ _) = show op /= "InvalidOpcode"
-    isValid _ = False
+    isValid = not . (== Iinvalid) . inOpcode
     validate = filter (all isValid . snd)
-
 
 showHexList lst = "[" ++ concat (intersperse "," (map (flip showHex "") lst)) ++ "]"
 
@@ -64,13 +62,24 @@ fromLBS = map (chr . fromIntegral) . L.unpack
 
 showAsJSON = fromLBS . encode . toJSON
 
-fmap concat $ mapM (AT.deriveJSON AT.defaultOptions) [''InstrOperandSize, ''Operand, ''Opcode, ''Instruction]
-
-instance Show Operand where show = showAsJSON
-
-myShowInstruction (Instruction op _ args _ bytes) = show op ++ showHexList bytes
-myShowInstruction (BadInstruction a b c d) = "???" ++ show (a,b,c,d)
-myShowInstruction (PseudoInstruction a b) = "???" ++ show (a,b)
+fmap concat $ mapM (AT.deriveJSON AT.defaultOptions) [
+    ''ControlRegister,
+    ''DebugRegister,
+    ''GPR,
+    ''Half,
+    ''Immediate,
+    ''Instruction,
+    ''MMXRegister,
+    ''Memory,
+    ''Opcode,
+    ''Operand,
+    ''Pointer,
+    ''Prefix,
+    ''Register,
+    ''Segment,
+    ''WordSize,
+    ''X87Register,
+    ''XMMRegister]
 
 data Options = Options {
     optFilename :: String,
