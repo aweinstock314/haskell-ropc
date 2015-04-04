@@ -8,10 +8,8 @@ import Data.Function
 import Data.List
 import Data.Maybe
 import Data.Word
+import Foreign
 import Foreign.C
-import Foreign.Marshal
-import Foreign.Ptr
-import Foreign.Storable
 import Hdis86
 import Numeric
 import System.Console.GetOpt
@@ -21,7 +19,7 @@ import System.IO
 import qualified Data.Aeson.TH as AT
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as M
-import qualified Data.Vector as V
+import qualified Data.Vector.Storable as V
 
 foreign import ccall "get_section_by_name"
     rawGetSectionByName :: CString -> CString -> Ptr Int -> IO (Ptr Word8)
@@ -34,9 +32,8 @@ getSectionByName fname section =
         result <- rawGetSectionByName pFname pSection pSize
         if result == nullPtr then return Nothing else do
             size <- peek pSize
-            vec <- V.generateM size (peekByteOff result)
-            free result
-            return $ Just vec
+            gcPtr <- newForeignPtr finalizerFree result
+            return . Just $ V.unsafeFromForeignPtr gcPtr 0 size
 
 getSectionByName_ fname section = fmap
     (maybe (error $ concat ["Unable to read section \"", section, "\" of \"", fname, "\""]) id) $
