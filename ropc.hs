@@ -42,12 +42,13 @@ getSectionByName_ fname section = fmap
 eitherToMaybe = either (const Nothing) Just
 
 getGadgets backLength codeVec = nub . validate . concat $ map tryPosition retIdxs where
-    retIdxs = V.toList $ V.findIndices (== 0xc3) codeVec
+    retIdxs = V.ifoldr (\i x -> if isJumpStart i x then (i:) else id) [] codeVec
+    isJumpStart i x = any (\j -> maybe False id . fmap ((`elem` [Iret]) . inOpcode . head) $ trySlice i j) [1..8]
     len = V.length codeVec
     invalidSlice i j = (i+j) > len || i < 0
-    trySlice :: Int -> Int -> Maybe [Instruction]
-    trySlice i j | invalidSlice i j = Nothing
-    trySlice i j = Just . disassemble intel32 . L.toStrict . L.pack . V.toList $ V.slice i j codeVec
+    maybeSlice i j | invalidSlice i j = Nothing
+    maybeSlice i j = Just $ V.slice i j codeVec
+    trySlice i j = maybeSlice i j >>= (Just . disassemble intel32 . L.toStrict . L.pack . V.toList)
     tryPosition j = catMaybes $ map (\i -> fmap ((,)(j-i)) $ trySlice (j-i) (i+1)) [0..backLength]
     isValid = not . (== Iinvalid) . inOpcode
     validate = filter (all isValid . snd)
