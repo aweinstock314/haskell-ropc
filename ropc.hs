@@ -42,16 +42,17 @@ getSectionByName_ fname section = fmap
 eitherToMaybe = either (const Nothing) Just
 
 getGadgets backLength codeVec = nub . validate . concat $ map tryPosition retIdxs where
+    isBranchy = (`elem` [Iret, Ijmp, Icall, Iint, Ijo, Ijno, Ijb, Ijae, Ijz, Ijnz, Ijbe, Ija, Ijs, Ijns, Ijp, Ijnp, Ijl, Ijge, Ijle, Ijg])
     retIdxs = V.ifoldr (\i x -> if isJumpStart i x then (i:) else id) [] codeVec
-    isJumpStart i x = any (\j -> maybe False id . fmap ((`elem` [Iret]) . inOpcode . head) $ trySlice i j) [1..8]
+    isJumpStart i x = any (\j -> maybe False id . fmap (isBranchy . inOpcode . head) $ trySlice i j) [1..8]
     len = V.length codeVec
     invalidSlice i j = (i+j) > len || i < 0
     maybeSlice i j | invalidSlice i j = Nothing
     maybeSlice i j = Just $ V.slice i j codeVec
     trySlice i j = maybeSlice i j >>= (Just . disassemble intel32 . L.toStrict . L.pack . V.toList)
     tryPosition j = catMaybes $ map (\i -> fmap ((,)(j-i)) $ trySlice (j-i) (i+1)) [0..backLength]
-    isValid = not . (== Iinvalid) . inOpcode
-    validate = filter (all isValid . snd)
+    isValid instrs = (all (not . (== Iinvalid) . inOpcode) instrs) && (isBranchy . inOpcode $ last instrs)
+    validate = filter (isValid . snd)
 
 showHexList lst = "[" ++ concat (intersperse "," (map (flip showHex "") lst)) ++ "]"
 
