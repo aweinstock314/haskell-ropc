@@ -42,17 +42,17 @@ getSectionByName_ fname section = fmap
 eitherToMaybe = either (const Nothing) Just
 
 getGadgets backLength codeVec = nub . validate . concat $ map tryPosition retIdxs where
-    isBranchy = (`elem` [Iret, Ijmp, Icall, Iint, Ijo, Ijno, Ijb, Ijae, Ijz, Ijnz, Ijbe, Ija, Ijs, Ijns, Ijp, Ijnp, Ijl, Ijge, Ijle, Ijg])
+    isBranchy = (`elem` [Iret, Ijmp, Icall, Iint, Isyscall, Ijo, Ijno, Ijb, Ijae, Ijz, Ijnz, Ijbe, Ija, Ijs, Ijns, Ijp, Ijnp, Ijl, Ijge, Ijle, Ijg])
     retIdxs = V.ifoldr (\i x -> if isJumpStart i x then (i:) else id) [] codeVec
-    isJumpStart i x = any (\j -> maybe False id . fmap (isBranchy . inOpcode . head) $ trySlice i j) [1..8]
+    isJumpStart i x = any (\j -> maybe False id . fmap (isBranchy . inOpcode . mdInst . head) $ trySlice i j) [1..8]
     len = V.length codeVec
     invalidSlice i j = (i+j) > len || i < 0
     maybeSlice i j | invalidSlice i j = Nothing
     maybeSlice i j = Just $ V.slice i j codeVec
-    trySlice i j = maybeSlice i j >>= (Just . disassemble intel32 . L.toStrict . L.pack . V.toList)
+    trySlice i j = maybeSlice i j >>= (Just . disassembleMetadata (intel32 {cfgSyntax = SyntaxATT}) . L.toStrict . L.pack . V.toList)
     tryPosition j = catMaybes $ map (\i -> fmap ((,)(j-i)) $ trySlice (j-i) (i+1)) [0..backLength]
     isValid instrs = (all (not . (== Iinvalid) . inOpcode) instrs) && (isBranchy . inOpcode $ last instrs)
-    validate = filter (isValid . snd)
+    validate = filter (isValid . map mdInst . snd)
 
 showHexList lst = "[" ++ concat (intersperse "," (map (flip showHex "") lst)) ++ "]"
 
@@ -132,4 +132,5 @@ main_dump (Options fname section _) = do
 main_search (Options fname section maxGadgetLen) =  do
     textSection <- getSectionByName_ fname section
     let gadgets = getGadgets maxGadgetLen textSection
-    putStr . unlines $ map showAsJSON gadgets
+    --putStr . unlines $ map (showAsJSON . (id *** map mdInst)) gadgets
+    putStr . unlines $ map (show . (id *** (map mdAssembly &&& map mdHex))) gadgets
