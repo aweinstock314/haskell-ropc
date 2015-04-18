@@ -41,7 +41,7 @@ getSectionByName_ fname section = fmap
 
 eitherToMaybe = either (const Nothing) Just
 
-getGadgets backLength codeVec = nub . validate . concat $ map tryPosition retIdxs where
+getGadgets backLength codeVec asmSyntax = nub . validate . concat $ map tryPosition retIdxs where
     isBranchy = (`elem` [Iret, Ijmp, Icall, Iint, Isyscall, Ijo, Ijno, Ijb, Ijae, Ijz, Ijnz, Ijbe, Ija, Ijs, Ijns, Ijp, Ijnp, Ijl, Ijge, Ijle, Ijg])
     retIdxs = V.ifoldr (\i x -> if isJumpStart i x then (i:) else id) [] codeVec
     isJumpStart i x = any (\j -> maybe False id . fmap (isBranchy . inOpcode . mdInst . head) $ trySlice i j) [1..8]
@@ -49,7 +49,7 @@ getGadgets backLength codeVec = nub . validate . concat $ map tryPosition retIdx
     invalidSlice i j = (i+j) > len || i < 0
     maybeSlice i j | invalidSlice i j = Nothing
     maybeSlice i j = Just $ V.slice i j codeVec
-    trySlice i j = maybeSlice i j >>= (Just . disassembleMetadata (intel32 {cfgSyntax = SyntaxATT}) . L.toStrict . L.pack . V.toList)
+    trySlice i j = maybeSlice i j >>= (Just . disassembleMetadata (intel32 {cfgSyntax = asmSyntax}) . L.toStrict . L.pack . V.toList)
     tryPosition j = catMaybes $ map (\i -> fmap ((,)(j-i)) $ trySlice (j-i) (i+1)) [0..backLength]
     isValid instrs = (all (not . (== Iinvalid) . inOpcode) instrs) && (isBranchy . inOpcode $ last instrs)
     validate = filter (isValid . map mdInst . snd)
@@ -83,10 +83,11 @@ fmap concat $ mapM (AT.deriveJSON AT.defaultOptions) [
 data Options = Options {
     optFilename :: String,
     optSection :: String,
-    optGadgetLength :: Int
+    optGadgetLength :: Int,
+    optAssemblySyntax :: Syntax
     }
 
-defaultOptions = Options "a.out" ".text" 5
+defaultOptions = Options "a.out" ".text" 5 SyntaxATT
 
 showHelp :: String -> [OptDescr (Options -> IO Options)] -> IO a
 showHelp subcommand options = do
@@ -106,11 +107,12 @@ showSubcommands = do
 
 subprogram_options = M.fromList [
     ("dump", (main_dump, fix $ \x -> [filename, section, help "dump" x])),
-    ("search", (main_search, fix $ \x -> [filename, section, gadgetLength, help "search" x]))
+    ("search", (main_search, fix $ \x -> [filename, section, gadgetLength, asmSyntax, help "search" x]))
     ] where
     filename = Option "f" ["file"] (ReqArg (\arg opt -> return opt { optFilename = arg }) "FILENAME") "Name of executable"
     section = Option "s" ["section"] (ReqArg (\arg opt -> return opt { optSection = arg }) "SECTION") "Name of section"
     gadgetLength = Option "l" ["length"] (ReqArg (\arg opt -> return opt { optGadgetLength = read arg }) "LENGTH") "Maximum length of gadgets to search for"
+    asmSyntax = Option "" ["syntax"] (ReqArg (\arg opt -> return opt { optAssemblySyntax = case arg of {"intel" -> SyntaxIntel; _ -> SyntaxATT} }) "[intel|att]") "Which syntax to use for displaying assembly"
     help subcommand options = Option "h?" ["help"] (NoArg $ \_ -> showHelp subcommand options) "Show this help menu"
 
 parse options args = let (actions, _, _) = getOpt RequireOrder options args in foldl (>>=) (return defaultOptions) actions
@@ -124,13 +126,13 @@ main = do
                 Nothing -> showSubcommands
         [] -> showSubcommands
 
-main_dump (Options fname section _) = do
+main_dump (Options fname section _ _) = do
     textSection <- getSectionByName_ fname section
     V.mapM_ (putStr . flip showHex "" . fromIntegral) textSection
     putStrLn ""
 
-main_search (Options fname section maxGadgetLen) =  do
+main_search (Options fname section maxGadgetLen asmSyntax) = do
     textSection <- getSectionByName_ fname section
-    let gadgets = getGadgets maxGadgetLen textSection
+    let gadgets = getGadgets maxGadgetLen textSection asmSyntax
     --putStr . unlines $ map (showAsJSON . (id *** map mdInst)) gadgets
     putStr . unlines $ map (show . (id *** (map mdAssembly &&& map mdHex))) gadgets
