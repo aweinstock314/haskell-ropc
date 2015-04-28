@@ -112,7 +112,10 @@ subprogram_options = M.fromList [
     filename = Option "f" ["file"] (ReqArg (\arg opt -> return opt { optFilename = arg }) "FILENAME") "Name of executable"
     section = Option "s" ["section"] (ReqArg (\arg opt -> return opt { optSection = arg }) "SECTION") "Name of section"
     gadgetLength = Option "l" ["length"] (ReqArg (\arg opt -> return opt { optGadgetLength = read arg }) "LENGTH") "Maximum length of gadgets to search for"
-    asmSyntax = Option "" ["syntax"] (ReqArg (\arg opt -> return opt { optAssemblySyntax = case arg of {"intel" -> SyntaxIntel; _ -> SyntaxATT} }) "[intel|att]") "Which syntax to use for displaying assembly"
+    asmSyntax = Option "" ["syntax"] (ReqArg (\arg opt -> return opt { optAssemblySyntax = case arg of {
+            "intel" -> SyntaxIntel; "att" -> SyntaxATT;
+            other -> error $ concat ["Unrecognized syntax option \"", other, "\" (valid options: \"att\", \"intel\")."]
+        }}) "[intel|att]") "Which syntax to use for displaying assembly"
     help subcommand options = Option "h?" ["help"] (NoArg $ \_ -> showHelp subcommand options) "Show this help menu"
 
 parse options args = let (actions, _, _) = getOpt RequireOrder options args in foldl (>>=) (return defaultOptions) actions
