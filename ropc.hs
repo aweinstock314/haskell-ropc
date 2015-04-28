@@ -135,4 +135,5 @@ main_search (Options fname section maxGadgetLen asmSyntax) = do
     textSection <- getSectionByName_ fname section
     let gadgets = getGadgets maxGadgetLen textSection asmSyntax
     --putStr . unlines $ map (showAsJSON . (id *** map mdInst)) gadgets
-    putStr . unlines $ map (show . (id *** (map mdAssembly &&& map mdHex))) gadgets
+    --putStr . unlines $ map (show . (id *** (map mdAssembly &&& map mdHex))) gadgets
+    putStr . unlines $ map (\(i, x) -> ("0x"++) . showHex i . (": "++) . intercalate "; " $ map mdAssembly x) gadgets
