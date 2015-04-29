@@ -80,14 +80,17 @@ fmap concat $ mapM (AT.deriveJSON AT.defaultOptions) [
     ''X87Register,
     ''XMMRegister]
 
+data OutputStyle = JSONOutput | ASMWithHexOutput | ROPGadgetOutput
+
 data Options = Options {
     optFilename :: String,
     optSection :: String,
     optGadgetLength :: Int,
-    optAssemblySyntax :: Syntax
+    optAssemblySyntax :: Syntax,
+    optOutputStyle :: OutputStyle
     }
 
-defaultOptions = Options "a.out" ".text" 5 SyntaxATT
+defaultOptions = Options "a.out" ".text" 5 SyntaxATT ROPGadgetOutput
 
 showHelp :: String -> [OptDescr (Options -> IO Options)] -> IO a
 showHelp subcommand options = do
@@ -107,7 +110,7 @@ showSubcommands = do
 
 subprogram_options = M.fromList [
     ("dump", (main_dump, fix $ \x -> [filename, section, help "dump" x])),
-    ("search", (main_search, fix $ \x -> [filename, section, gadgetLength, asmSyntax, help "search" x]))
+    ("search", (main_search, fix $ \x -> [filename, section, gadgetLength, asmSyntax, outputStyle, help "search" x]))
     ] where
     filename = Option "f" ["file"] (ReqArg (\arg opt -> return opt { optFilename = arg }) "FILENAME") "Name of executable"
     section = Option "s" ["section"] (ReqArg (\arg opt -> return opt { optSection = arg }) "SECTION") "Name of section"
@@ -116,6 +119,10 @@ subprogram_options = M.fromList [
             "intel" -> SyntaxIntel; "att" -> SyntaxATT;
             other -> error $ concat ["Unrecognized syntax option \"", other, "\" (valid options: \"att\", \"intel\")."]
         }}) "[intel|att]") "Which syntax to use for displaying assembly"
+    outputStyle = Option "" ["output-style"] (ReqArg (\arg opt -> return opt { optOutputStyle = case arg of {
+            "json" -> JSONOutput; "asmwithhex" -> ASMWithHexOutput; "ropgadget" -> ROPGadgetOutput;
+            other -> error $ concat ["Unrecognized output style option \"", other, "\" (valid options: \"json\", \"asmwithhex\", \"ropgadget\")."]
+        }}) "[json|asmwithhex|ropgadget]") "Which style of output to use"
     help subcommand options = Option "h?" ["help"] (NoArg $ \_ -> showHelp subcommand options) "Show this help menu"
 
 parse options args = let (actions, _, _) = getOpt RequireOrder options args in foldl (>>=) (return defaultOptions) actions
@@ -129,14 +136,15 @@ main = do
                 Nothing -> showSubcommands
         [] -> showSubcommands
 
-main_dump (Options fname section _ _) = do
+main_dump (Options fname section _ _ _) = do
     textSection <- getSectionByName_ fname section
     V.mapM_ (putStr . flip showHex "" . fromIntegral) textSection
     putStrLn ""
 
-main_search (Options fname section maxGadgetLen asmSyntax) = do
+main_search (Options fname section maxGadgetLen asmSyntax outputStyle) = do
     textSection <- getSectionByName_ fname section
     let gadgets = getGadgets maxGadgetLen textSection asmSyntax
-    --putStr . unlines $ map (showAsJSON . (id *** map mdInst)) gadgets
-    --putStr . unlines $ map (show . (id *** (map mdAssembly &&& map mdHex))) gadgets
-    putStr . unlines $ map (\(i, x) -> ("0x"++) . showHex i . (": "++) . intercalate "; " $ map mdAssembly x) gadgets
+    putStr . unlines $ case outputStyle of
+        JSONOutput -> map (showAsJSON . (id *** map mdInst)) gadgets
+        ASMWithHexOutput -> map (show . (id *** (map mdAssembly &&& map mdHex))) gadgets
+        ROPGadgetOutput -> map (\(i, x) -> ("0x"++) . showHex i . (": "++) . intercalate "; " $ map mdAssembly x) gadgets
