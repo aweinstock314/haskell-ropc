@@ -144,7 +144,8 @@ main_dump (Options fname section _ _ _) = do
 main_search (Options fname section maxGadgetLen asmSyntax outputStyle) = do
     textSection <- getSectionByName_ fname section
     let gadgets = getGadgets maxGadgetLen textSection asmSyntax
-    putStr . unlines $ case outputStyle of
-        JSONOutput -> map (showAsJSON . (id *** map mdInst)) gadgets
-        ASMWithHexOutput -> map (show . (id *** (map mdAssembly &&& map mdHex))) gadgets
-        ROPGadgetOutput -> map (\(i, x) -> ("0x"++) . showHex i . (": "++) . intercalate "; " $ map mdAssembly x) gadgets
+    putStr . unlines $ map (case outputStyle of {
+        JSONOutput -> (showAsJSON . (id *** map mdInst));
+        ASMWithHexOutput -> (show . (id *** (map mdAssembly &&& map mdHex)));
+        ROPGadgetOutput -> (\(i, x) -> ("0x"++) . showHex i . (": "++) . intercalate "; " $ map mdAssembly x)
+    }) gadgets
