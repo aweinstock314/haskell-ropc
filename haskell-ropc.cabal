@@ -17,7 +17,7 @@ cabal-version:       >=1.10
 
 executable haskell-ropc
   main-is:             ropc.hs
-  -- other-modules:       
+  other-modules:       ROPCUtils
   -- other-extensions:    
   -- As of 2015-03-24, harpy requires the patch from https://github.com/gentoo-haskell/gentoo-haskell/blob/master/dev-haskell/harpy/files/harpy-0.5.0.0-ghc-7.6.patch to install on debian testing
   build-depends:       base >=4.5 && <4.7, aeson, bytestring, containers, hdis86, mtl, vector

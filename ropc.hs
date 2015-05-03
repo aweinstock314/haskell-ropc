@@ -1,9 +1,6 @@
-{-# LANGUAGE ForeignFunctionInterface, NoMonomorphismRestriction, TemplateHaskell #-}
---module ROPc where
+{-# LANGUAGE ForeignFunctionInterface, NoMonomorphismRestriction #-}
 import Control.Arrow
 import Control.Monad.Identity
-import Data.Aeson
-import Data.Char
 import Data.Function
 import Data.List
 import Data.Maybe
@@ -12,6 +9,7 @@ import Foreign
 import Foreign.C
 import Hdis86
 import Numeric
+import ROPCUtils
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -39,8 +37,6 @@ getSectionByName_ fname section = fmap
     (maybe (error $ concat ["Unable to read section \"", section, "\" of \"", fname, "\""]) id) $
     getSectionByName fname section
 
-eitherToMaybe = either (const Nothing) Just
-
 getGadgets backLength codeVec asmSyntax = nub . validate . concat $ map tryPosition retIdxs where
     isBranchy = (`elem` [Iret, Ijmp, Icall, Iint, Isyscall, Ijo, Ijno, Ijb, Ijae, Ijz, Ijnz, Ijbe, Ija, Ijs, Ijns, Ijp, Ijnp, Ijl, Ijge, Ijle, Ijg])
     retIdxs = V.ifoldr (\i x -> if isJumpStart i x then (i:) else id) [] codeVec
@@ -53,32 +49,6 @@ getGadgets backLength codeVec asmSyntax = nub . validate . concat $ map tryPosit
     tryPosition j = catMaybes $ map (\i -> fmap ((,)(j-i)) $ trySlice (j-i) (i+1)) [0..backLength]
     isValid instrs = (all (not . (== Iinvalid) . inOpcode) instrs) && (isBranchy . inOpcode $ last instrs)
     validate = filter (isValid . map mdInst . snd)
-
-showHexList lst = "[" ++ concat (intersperse "," (map (flip showHex "") lst)) ++ "]"
-
-toLBS = L.pack . map (fromIntegral . ord)
-fromLBS = map (chr . fromIntegral) . L.unpack
-
-showAsJSON = fromLBS . encode . toJSON
-
-fmap concat $ mapM (AT.deriveJSON AT.defaultOptions) [
-    ''ControlRegister,
-    ''DebugRegister,
-    ''GPR,
-    ''Half,
-    ''Immediate,
-    ''Instruction,
-    ''MMXRegister,
-    ''Memory,
-    ''Opcode,
-    ''Operand,
-    ''Pointer,
-    ''Prefix,
-    ''Register,
-    ''Segment,
-    ''WordSize,
-    ''X87Register,
-    ''XMMRegister]
 
 data OutputStyle = JSONOutput | ASMWithHexOutput | ROPGadgetOutput
 
